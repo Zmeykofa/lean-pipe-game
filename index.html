@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Симулятор Сварщика</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.60.0/phaser.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; background: #1a1a1a; overflow: hidden; font-family: Arial, sans-serif; }
+        #game-container { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
+    </style>
+</head>
+<body>
+<div id="game-container"></div>
+
+<script>
+    // Инициализация Telegram WebApp
+    const tg = window.Telegram.WebApp;
+    tg.expand();
+
+    class WelderScene extends Phaser.Scene {
+        constructor() {
+            super({ key: 'WelderScene' });
+        }
+
+        preload() {
+            // Генерируем текстуры программно (чтобы не качать картинки)
+            const graphics = this.make.graphics({ x: 0, y: 0, add: false });
+            
+            // Фон трубы
+            graphics.fillStyle(0x555555);
+            graphics.fillRect(0, 0, 300, 50);
+            graphics.generateTexture('pipe', 300, 50);
+
+            // Курсор
+            graphics.clear();
+            graphics.fillStyle(0xffaa00);
+            graphics.fillRect(0, 0, 10, 60);
+            graphics.generateTexture('cursor', 10, 60);
+
+            // Зеленая зона (идеальный шов)
+            graphics.clear();
+            graphics.fillStyle(0x00ff00, 0.5);
+            graphics.fillRect(0, 0, 60, 50);
+            graphics.generateTexture('zone', 60, 50);
+        }
+
+        create() {
+            const centerX = this.cameras.main.width / 2;
+            const centerY = this.cameras.main.height / 2;
+
+            // Интерфейс
+            this.add.text(centerX, 50, 'УДЕРЖИВАЙ В ЦЕНТРЕ!', { fontSize: '24px', fill: '#fff' }).setOrigin(0.5);
+            this.scoreText = this.add.text(centerX, 100, 'Качество: 50%', { fontSize: '32px', fill: '#ffff00' }).setOrigin(0.5);
+
+            // Игровые объекты
+            this.add.image(centerX, centerY, 'pipe');
+            this.zone = this.add.image(centerX, centerY, 'zone');
+            this.cursor = this.add.image(centerX, centerY, 'cursor');
+            
+            // Переменные логики
+            this.weldQuality = 50;
+            this.gameActive = true;
+            this.speed = 200;
+            
+            // Физика курсора (симуляция дрожащей руки)
+            this.cursorTween = this.tweens.add({
+                targets: this.cursor,
+                x: centerX + 120,
+                duration: 1000,
+                yoyo: true,
+                repeat: -1,
+                ease: 'Sine.easeInOut'
+            });
+
+            // Обработка клика (сварка)
+            this.input.on('pointerdown', this.doWeld, this);
+            
+            // Таймер окончания смены (10 секунд игры)
+            this.time.delayedCall(10000, this.endGame, [], this);
+        }
+
+        update() {
+            if (!this.gameActive) return;
+
+            // Хаотичное движение (дрожь)
+            this.cursor.x += Math.sin(this.time.now / 100) * 2;
+        }
+
+        doWeld() {
+            if (!this.gameActive) return;
+
+            // Проверка попадания в зеленую зону
+            const dist = Math.abs(this.cursor.x - this.zone.x);
+            
+            if (dist < 30) {
+                this.weldQuality = Math.min(100, this.weldQuality + 5);
+                this.cameras.main.shake(50, 0.005); // Эффект удара
+            } else {
+                this.weldQuality = Math.max(0, this.weldQuality - 10);
+                this.cameras.main.flash(100, 0xff0000); // Ошибка
+            }
+
+            this.scoreText.setText(`Качество: ${this.weldQuality}%`);
+            
+            // Меняем цвет текста
+            if (this.weldQuality > 80) this.scoreText.setColor('#00ff00');
+            else if (this.weldQuality < 40) this.scoreText.setColor('#ff0000');
+            else this.scoreText.setColor('#ffff00');
+        }
+
+        endGame() {
+            this.gameActive = false;
+            this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.8).setOrigin(0);
+            this.add.text(this.cameras.main.width/2, this.cameras.main.height/2, 'СМЕНА ОКОНЧЕНА', { fontSize: '40px' }).setOrigin(0.5);
+            
+            // Отправка данных боту
+            setTimeout(() => {
+                const data = JSON.stringify({
+                    role: 'welder',
+                    quality: this.weldQuality,
+                    timestamp: new Date().toISOString()
+                });
+                tg.sendData(data); // ! ВАЖНО: отправляет данные обратно в чат
+            }, 1500);
+        }
+    }
+
+    const config = {
+        type: Phaser.AUTO,
+        parent: 'game-container',
+        width: window.innerWidth,
+        height: window.innerHeight,
+        scene: WelderScene
+    };
+
+    const game = new Phaser.Game(config);
+</script>
+</body>
+</html>
