@@ -3,139 +3,141 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Симулятор Сварщика</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.60.0/phaser.min.js"></script>
-    <style>
-        body { margin: 0; padding: 0; background: #1a1a1a; overflow: hidden; font-family: Arial, sans-serif; }
-        #game-container { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-    </style>
+    <style>body { margin: 0; background: #222; overflow: hidden; }</style>
 </head>
 <body>
 <div id="game-container"></div>
-
 <script>
-    // Инициализация Telegram WebApp
     const tg = window.Telegram.WebApp;
     tg.expand();
 
-    class WelderScene extends Phaser.Scene {
-        constructor() {
-            super({ key: 'WelderScene' });
-        }
+    // Получаем роль из URL: index.html?role=excavator
+    const urlParams = new URLSearchParams(window.location.search);
+    const ROLE = urlParams.get('role') || 'welder';
 
-        preload() {
-            // Генерируем текстуры программно (чтобы не качать картинки)
-            const graphics = this.make.graphics({ x: 0, y: 0, add: false });
-            
-            // Фон трубы
-            graphics.fillStyle(0x555555);
-            graphics.fillRect(0, 0, 300, 50);
-            graphics.generateTexture('pipe', 300, 50);
-
-            // Курсор
-            graphics.clear();
-            graphics.fillStyle(0xffaa00);
-            graphics.fillRect(0, 0, 10, 60);
-            graphics.generateTexture('cursor', 10, 60);
-
-            // Зеленая зона (идеальный шов)
-            graphics.clear();
-            graphics.fillStyle(0x00ff00, 0.5);
-            graphics.fillRect(0, 0, 60, 50);
-            graphics.generateTexture('zone', 60, 50);
-        }
-
+    // --- СЦЕНА 1: СВАРЩИК (Reaction / Rhythm) ---
+    class WelderGame extends Phaser.Scene {
+        constructor() { super({ key: 'welder' }); }
         create() {
-            const centerX = this.cameras.main.width / 2;
-            const centerY = this.cameras.main.height / 2;
-
-            // Интерфейс
-            this.add.text(centerX, 50, 'УДЕРЖИВАЙ В ЦЕНТРЕ!', { fontSize: '24px', fill: '#fff' }).setOrigin(0.5);
-            this.scoreText = this.add.text(centerX, 100, 'Качество: 50%', { fontSize: '32px', fill: '#ffff00' }).setOrigin(0.5);
-
-            // Игровые объекты
-            this.add.image(centerX, centerY, 'pipe');
-            this.zone = this.add.image(centerX, centerY, 'zone');
-            this.cursor = this.add.image(centerX, centerY, 'cursor');
+            this.add.text(window.innerWidth/2, 50, 'СВАРКА: Лови зеленый центр!', { fontSize: '20px', fill: '#fff' }).setOrigin(0.5);
             
-            // Переменные логики
-            this.weldQuality = 50;
-            this.gameActive = true;
-            this.speed = 200;
+            // Зона и курсор
+            this.zone = this.add.rectangle(window.innerWidth/2, window.innerHeight/2, 60, 200, 0x00ff00).setAlpha(0.5);
+            this.cursor = this.add.rectangle(100, window.innerHeight/2, 20, 220, 0xffaa00);
             
-            // Физика курсора (симуляция дрожащей руки)
-            this.cursorTween = this.tweens.add({
+            this.tweens.add({
                 targets: this.cursor,
-                x: centerX + 120,
-                duration: 1000,
+                x: window.innerWidth - 100,
+                duration: 800,
                 yoyo: true,
                 repeat: -1,
                 ease: 'Sine.easeInOut'
             });
 
-            // Обработка клика (сварка)
-            this.input.on('pointerdown', this.doWeld, this);
+            this.quality = 50;
+            this.scoreText = this.add.text(window.innerWidth/2, 100, 'Качество: 50%', { fontSize: '24px', fill: '#ff0' }).setOrigin(0.5);
             
-            // Таймер окончания смены (10 секунд игры)
-            this.time.delayedCall(10000, this.endGame, [], this);
-        }
+            this.input.on('pointerdown', () => {
+                const dist = Math.abs(this.cursor.x - this.zone.x);
+                if(dist < 35) {
+                    this.quality = Math.min(100, this.quality + 10);
+                    this.cameras.main.shake(50, 0.005);
+                } else {
+                    this.quality = Math.max(0, this.quality - 15);
+                    this.cameras.main.flash(100, 0xff0000);
+                }
+                this.scoreText.setText(`Качество: ${this.quality}%`);
+            });
 
-        update() {
-            if (!this.gameActive) return;
-
-            // Хаотичное движение (дрожь)
-            this.cursor.x += Math.sin(this.time.now / 100) * 2;
-        }
-
-        doWeld() {
-            if (!this.gameActive) return;
-
-            // Проверка попадания в зеленую зону
-            const dist = Math.abs(this.cursor.x - this.zone.x);
-            
-            if (dist < 30) {
-                this.weldQuality = Math.min(100, this.weldQuality + 5);
-                this.cameras.main.shake(50, 0.005); // Эффект удара
-            } else {
-                this.weldQuality = Math.max(0, this.weldQuality - 10);
-                this.cameras.main.flash(100, 0xff0000); // Ошибка
-            }
-
-            this.scoreText.setText(`Качество: ${this.weldQuality}%`);
-            
-            // Меняем цвет текста
-            if (this.weldQuality > 80) this.scoreText.setColor('#00ff00');
-            else if (this.weldQuality < 40) this.scoreText.setColor('#ff0000');
-            else this.scoreText.setColor('#ffff00');
-        }
-
-        endGame() {
-            this.gameActive = false;
-            this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.8).setOrigin(0);
-            this.add.text(this.cameras.main.width/2, this.cameras.main.height/2, 'СМЕНА ОКОНЧЕНА', { fontSize: '40px' }).setOrigin(0.5);
-            
-            // Отправка данных боту
-            setTimeout(() => {
-                const data = JSON.stringify({
-                    role: 'welder',
-                    quality: this.weldQuality,
-                    timestamp: new Date().toISOString()
-                });
-                tg.sendData(data); // ! ВАЖНО: отправляет данные обратно в чат
-            }, 1500);
+            this.time.delayedCall(10000, () => finishGame(this.quality, 'welder'), [], this);
         }
     }
 
+    // --- СЦЕНА 2: ЭКСКАВАТОР (Keep in range) ---
+    class ExcavatorGame extends Phaser.Scene {
+        constructor() { super({ key: 'excavator' }); }
+        create() {
+            this.add.text(window.innerWidth/2, 50, 'ТРАНШЕЯ: Жми, держи уровень!', { fontSize: '20px', fill: '#fff' }).setOrigin(0.5);
+            
+            // Уровень земли (линия)
+            this.add.rectangle(window.innerWidth/2, window.innerHeight/2, window.innerWidth, 4, 0x00ff00);
+            
+            // Ковш
+            this.bucket = this.add.rectangle(window.innerWidth/2, window.innerHeight/2, 50, 50, 0xffff00);
+            this.physics.add.existing(this.bucket);
+            this.bucket.body.setGravityY(600);
+            this.bucket.body.setCollideWorldBounds(true);
+
+            this.deviation = 0; // Накопленная ошибка
+            
+            this.input.on('pointerdown', () => {
+                this.bucket.body.setVelocityY(-300);
+            });
+            
+            this.scoreText = this.add.text(window.innerWidth/2, 100, 'Отклонение: 0 см', { fontSize: '24px', fill: '#fff' }).setOrigin(0.5);
+            
+            this.time.addEvent({
+                delay: 500,
+                loop: true,
+                callback: () => {
+                    const diff = Math.abs(this.bucket.y - window.innerHeight/2);
+                    if(diff > 50) this.deviation += Math.floor(diff/10);
+                    this.scoreText.setText(`Отклонение: ${this.deviation} см`);
+                }
+            });
+
+            this.time.delayedCall(10000, () => {
+                // Переводим отклонение в качество (0 отклонения = 100%, 200+ = 0%)
+                let q = Math.max(0, 100 - (this.deviation / 2));
+                finishGame(Math.floor(q), 'excavator');
+            }, [], this);
+        }
+    }
+
+    // --- СЦЕНА 3: ЗАГЛУШКА (Для остальных ролей) ---
+    class GenericGame extends Phaser.Scene {
+        constructor() { super({ key: 'generic' }); }
+        create() {
+            this.add.text(window.innerWidth/2, window.innerHeight/2 - 50, 'РАБОТА...', { fontSize: '30px' }).setOrigin(0.5);
+            this.add.text(window.innerWidth/2, window.innerHeight/2 + 50, 'Тапай быстро!', { fontSize: '16px' }).setOrigin(0.5);
+            
+            this.clicks = 0;
+            this.input.on('pointerdown', () => {
+                this.clicks++;
+                this.cameras.main.shake(20, 0.002);
+            });
+
+            this.time.delayedCall(5000, () => {
+                let q = Math.min(100, this.clicks * 4); // Надо 25 кликов за 5 сек
+                finishGame(q, ROLE);
+            }, [], this);
+        }
+    }
+
+    // --- ОБЩАЯ ФУНКЦИЯ ЗАВЕРШЕНИЯ ---
+    function finishGame(score, role) {
+        tg.sendData(JSON.stringify({ role: role, quality: score }));
+    }
+
+    // --- КОНФИГ ---
     const config = {
         type: Phaser.AUTO,
         parent: 'game-container',
         width: window.innerWidth,
         height: window.innerHeight,
-        scene: WelderScene
+        physics: { default: 'arcade', arcade: { gravity: { y: 0 } } },
+        scene: [WelderGame, ExcavatorGame, GenericGame]
     };
 
     const game = new Phaser.Game(config);
+
+    // Запуск нужной сцены
+    if (ROLE === 'excavator') game.scene.start('excavator');
+    else if (ROLE === 'welder') game.scene.start('welder');
+    else game.scene.start('generic'); // Для геодезиста, водителя и т.д.
+
 </script>
 </body>
 </html>
